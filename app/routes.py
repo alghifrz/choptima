@@ -2,8 +2,15 @@ from flask import Blueprint, render_template, request, jsonify, send_file
 from app import db
 from app.models import Prediction, BatchUpload
 from app.utils import (
-    validate_input, predict_production, optimize_choke, 
-    process_excel_file, FEATURE_NAMES
+    validate_input,
+    predict_production,
+    optimize_choke,
+    process_excel_file,
+    FEATURE_NAMES,
+    list_model_pairs,
+    get_models_for_stem,
+    default_model_stem_from_config,
+    resolve_feature_order,
 )
 from app.config import SELECTED_WELL, FEATURE_DESCRIPTIONS
 from datetime import datetime, date
@@ -19,11 +26,21 @@ bp = Blueprint('main', __name__)
 
 @bp.route('/')
 def index():
-    """Home page - single prediction"""
-    return render_template('index.html', 
-                           well_name=SELECTED_WELL,
-                           features=FEATURE_NAMES,
-                           feature_descriptions=FEATURE_DESCRIPTIONS)
+    """Home page - daily optimization"""
+    pairs = list_model_pairs()
+    stems = [p['stem'] for p in pairs]
+    default_stem = default_model_stem_from_config()
+    if default_stem not in stems and stems:
+        default_stem = stems[0]
+    elif not stems:
+        default_stem = None
+    return render_template(
+        'index.html',
+        well_name=SELECTED_WELL,
+        features=FEATURE_NAMES,
+        feature_descriptions=FEATURE_DESCRIPTIONS,
+        default_model_stem=default_stem,
+    )
 
 @bp.route('/history')
 def history():
@@ -39,6 +56,13 @@ def upload_page():
 # ============================================
 # API ROUTES - PREDICTION
 # ============================================
+
+
+@bp.route('/api/ml-models', methods=['GET'])
+def api_ml_models():
+    """List oil/water model pairs available under ml_models/."""
+    return jsonify({'ok': True, 'models': list_model_pairs()}), 200
+
 
 @bp.route('/api/predict', methods=['POST'])
 def api_predict():
@@ -61,19 +85,39 @@ def api_predict():
         # Extract features
         input_features = data.get('features', {})
         prediction_date_str = data.get('prediction_date', date.today().isoformat())
-        
+        model_stem = (data.get('model_stem') or data.get('model_id') or '').strip()
+
+        if not model_stem:
+            return jsonify({'error': 'Pilih model (model_stem) terlebih dahulu.'}), 400
+
+        mo, mw, model_err = get_models_for_stem(model_stem)
+        if model_err:
+            return jsonify({'error': model_err}), 400
+
+        feature_order = resolve_feature_order(model_stem, mo)
+
         # Validate input
         is_valid, errors = validate_input(input_features)
         if not is_valid:
-            return jsonify({'error': 'Validation failed', 'details': errors}), 400
-        
-        # Predict production
-        pred_result, pred_error = predict_production(input_features)
+            detail_str = "; ".join(errors) if isinstance(errors, list) else str(errors)
+            return jsonify(
+                {
+                    "error": "Validasi gagal: " + detail_str,
+                    "details": errors,
+                }
+            ), 400
+
+        # Predict production (array columns must match training order)
+        pred_result, pred_error = predict_production(
+            input_features, mo, mw, feature_order
+        )
         if pred_error:
             return jsonify({'error': pred_error}), 500
-        
+
         # Optimize choke
-        opt_result, opt_error = optimize_choke(input_features)
+        opt_result, opt_error = optimize_choke(
+            input_features, mo, mw, feature_order
+        )
         if opt_error:
             return jsonify({'error': opt_error}), 500
         

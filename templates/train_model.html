@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+
+{% block title %}Train Model - Oiloz{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/train_pipeline.css') }}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="train-pipeline-page mb-10">
+    <div class="card rounded-2xl mb-10">
+        <h2 class="text-2xl font-semibold text-gray-800 flex items-center gap-2">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 1.25rem; height: 1.25rem;">
+                <!-- Node circles -->
+                <circle cx="6" cy="12" r="2" stroke="#4a90e2" stroke-width="1.5"/>
+                <circle cx="12" cy="6" r="2" stroke="#4a90e2" stroke-width="1.5"/>
+                <circle cx="18" cy="12" r="2" stroke="#4a90e2" stroke-width="1.5"/>
+                <circle cx="12" cy="18" r="2" stroke="#4a90e2" stroke-width="1.5"/>
+              
+                <!-- Connections -->
+                <path d="M8 12H10M14 12H16M12 8V10M12 14V16" stroke="#4a90e2" stroke-width="1.5" stroke-linecap="round"/>
+              
+                <!-- Center (model core) -->
+                <circle cx="12" cy="12" r="2.5" stroke="#4a90e2" stroke-width="1.5"/>
+              </svg>
+            Training Model
+        </h2>
+        <!-- <p class="text-gray-500 text-sm mt-2 max-w-3xl leading-relaxed">Unggah data → praproses → sumur → fitur → split → latih → validasi silang (R²) → optimasi choke → grafik deret waktu → simpan model.</p> -->
+        <!-- <p class="text-gray-500 text-sm mt-3 font-mono" id="sessionLabel">Membuat sesi…</p> -->
+    </div>
+
+    <div class="train-grid grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+        <section class="card rounded-2xl card-compact train-step-card relative overflow-hidden h-full" id="step-upload">
+            <div class="flex flex-col h-full justify-between gap-4">
+                <div>
+                    <div class="process-loading" aria-hidden="true">
+                        <div class="process-loading-track">
+                            <div class="process-loading-bar"></div>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-5">1. Unggah data</h3>
+                    <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" class="train-control mt-2 rounded-lg text-sm text-gray-800" />
+                    <div id="uploadSummary" class="text-gray-600 text-sm mt-3"></div>
+                </div>
+                <button type="button" id="btnUpload" class="btn btn-primary btn-pill font-semibold w-full sm:w-auto mt-3" disabled>Unggah
+                </button>
+            </div>
+        </section>
+
+        <section class="card rounded-2xl card-compact train-step-card relative overflow-hidden h-full" id="step-preprocess">
+            <div class="flex flex-col h-full justify-between gap-4">
+                <div>
+                    <div class="process-loading" aria-hidden="true">
+                        <div class="process-loading-track">
+                            <div class="process-loading-bar"></div>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-5">2. Praproses</h3>
+                    <p class="text-gray-500 text-sm">
+                        Filter: minyak &gt; 0, flow production, well OP.
+                    </p>
+                    <div id="preSummary" class="text-gray-600 text-sm mt-3"></div>
+                </div>
+                <button type="button" id="btnPreprocess" class="btn btn-primary btn-pill font-semibold w-full sm:w-auto mt-3" disabled> Praproses
+                </button>
+            </div>
+        </section>
+
+        <section class="card rounded-2xl card-compact train-step-card relative overflow-hidden h-full" id="step-well">
+            <div class="flex flex-col h-full justify-between gap-4">
+                <div>
+                    <div class="process-loading" aria-hidden="true">
+                        <div class="process-loading-track">
+                            <div class="process-loading-bar"></div>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-5">3. Pilih sumur</h3>
+                    <select id="wellSelect" class="train-control mt-2 rounded-lg bg-white text-gray-800" disabled></select>
+                    <div id="wellSummary" class="text-gray-600 text-sm mt-3"></div>
+                </div>
+                <button type="button" id="btnSelectWell" class="btn btn-primary btn-pill font-semibold w-full sm:w-auto mt-3" disabled>  Gunakan sumur ini
+                </button>
+            </div>
+        </section>
+
+        <section class="card rounded-2xl card-compact train-step-card relative overflow-hidden h-full" id="step-feature">
+            <div class="flex flex-col h-full justify-between gap-4">
+                <div>
+                    <div class="process-loading" aria-hidden="true">
+                        <div class="process-loading-track">
+                            <div class="process-loading-bar"></div>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-5">4. Fitur &amp; target</h3>
+                    <div id="featureSummary" class="text-gray-600 text-sm mt-3"></div>
+                </div>
+                <button type="button" id="btnOpenFeatures" class="btn btn-primary btn-pill font-semibold w-full sm:w-auto mt-3" disabled>
+                    Pilih kolom fitur…
+                </button>
+            </div>
+        </section>
+
+        <section class="card rounded-2xl card-compact train-step-card relative overflow-hidden h-full" id="step-split">
+            <div class="flex flex-col h-full justify-between gap-4">
+                <div>
+                    <div class="process-loading" aria-hidden="true">
+                        <div class="process-loading-track">
+                            <div class="process-loading-bar"></div>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-5">5. Split dataset</h3>
+                    <div class="train-step-fields space-y-4">
+                        <div class="field-group mb-0">
+                            <label class="font-medium text-gray-700">Test size (0–1)</label>
+                            <input type="number" id="testSize" value="0.2" step="0.05" min="0.05" max="0.95" class="train-control mt-2 rounded-lg" />
+                        </div>
+                        <div class="field-group mb-0">
+                            <label class="font-medium text-gray-700">Random state</label>
+                            <input type="number" id="randomState" value="42" class="train-control mt-2 rounded-lg" />
+                        </div>
+                        <div class="field-group mb-0">
+                            <label class="font-medium text-gray-700">CV folds (latihan)</label>
+                            <input type="number" id="cvFoldsSplit" value="5" min="2" max="10" class="train-control mt-2 rounded-lg" />
+                        </div>
+                    </div>
+                    <div id="splitSummary" class="text-gray-600 text-sm mt-3"></div>
+                </div>
+                <button type="button" id="btnSplit" class="btn btn-primary btn-pill font-semibold w-full sm:w-auto mt-3" disabled>Split
+                </button>
+            </div>
+        </section>
+
+        <section class="card rounded-2xl card-compact train-step-card relative overflow-hidden h-full" id="step-train">
+            <div class="flex flex-col h-full justify-between gap-4">
+                <div>
+                    <div class="process-loading" aria-hidden="true">
+                        <div class="process-loading-track">
+                            <div class="process-loading-bar"></div>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-5">6. Model &amp; training</h3>
+                    <label class="font-medium text-gray-700">Algoritma</label>
+                    <select id="algoSelect" class="train-control mt-2 rounded-lg bg-white text-gray-800" disabled>
+                        <option value="">— pilih —</option>
+                        {% for a in algorithms %}
+                        <option value="{{ a }}">{{ a }}</option>
+                        {% endfor %}
+                    </select>
+                    <div id="trainSummary" class="text-gray-600 text-sm mt-3"></div>
+                </div>
+                <button type="button" id="btnTrain" class="btn btn-primary btn-pill font-semibold w-full sm:w-auto mt-3" disabled>Training (oil + water)
+                </button>
+            </div>
+        </section>
+
+        <section class="card rounded-2xl card-compact train-step-card relative overflow-hidden col-span-full h-full" id="step-cv">
+            <div class="flex flex-col h-full justify-between gap-4">
+                <div>
+                    <div class="process-loading" aria-hidden="true">
+                        <div class="process-loading-track">
+                            <div class="process-loading-bar"></div>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-5">
+                        7. Cross-validation (R²)
+                    </h3>
+                    <div class="field-group mb-0 max-w-xs">
+                        <label class="font-medium text-gray-700">Jumlah lipatan (cv)</label>
+                        <input type="number" id="cvFolds" value="5" min="2" max="20" class="train-control mt-2 rounded-lg" />
+                    </div>
+                    <div class="cv-grid mt-4">
+                        <div>
+                            <h4 class="text-sm font-semibold text-blue-500 mb-2">Oil</h4>
+                            <pre id="cvOil" class="cv-out">—</pre>
+                        </div>
+                        <div>
+                            <h4 class="text-sm font-semibold text-orange-500 mb-2">Water</h4>
+                            <pre id="cvWater" class="cv-out">—</pre>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" id="btnCv" class="btn btn-ghost btn-pill font-semibold w-full sm:w-auto mt-3" disabled>Jalankan / perbarui CV
+                </button>
+            </div>
+        </section>
+
+        <section class="card rounded-2xl card-compact train-step-card relative overflow-hidden col-span-full h-full" id="step-optimize">
+            <div class="flex flex-col h-full justify-between gap-4">
+                <div>
+                    <div class="process-loading" aria-hidden="true">
+                        <div class="process-loading-track">
+                            <div class="process-loading-bar"></div>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-5">
+                        8. Optimasi choke
+                    </h3>
+                    <div class="field-group mb-0 max-w-xs">
+                        <label class="font-medium text-gray-700">
+                            Jumlah hari (maks. baris test)
+                        </label>
+                        <input type="number" id="nDays" value="30" min="1" max="5000" class="train-control mt-2 rounded-lg" />
+                    </div>
+                    <p class="text-gray-500 text-sm mt-2" id="optDateHint">
+                        Lakukan split dataset dulu agar rentang tanggal test tersedia.
+                    </p>
+                    <div class="row-dates mt-3">
+                        <div class="field-group mb-0">
+                            <label class="font-medium text-gray-700">
+                                Tanggal mulai (opsional)
+                            </label>
+                            <input type="date" id="optDateStart" disabled class="train-control mt-2 rounded-lg" />
+                        </div>
+                        <div class="field-group mb-0">
+                            <label class="font-medium text-gray-700">
+                                Tanggal akhir (opsional)
+                            </label>
+                            <input type="date" id="optDateEnd" disabled class="train-control mt-2 rounded-lg" />
+                        </div>
+                    </div>
+                    <p class="text-gray-500 text-sm mt-3">
+                        Kosongkan tanggal = ambil baris test dari awal.
+                        Isi keduanya = filter 
+                        <strong class="text-gray-700 font-medium">DATEPRD</strong>,
+                        urut naik, lalu maks. N baris.
+                    </p>
+                    <label class="font-medium text-gray-700 mt-4 block">
+                        Metode scipy
+                    </label>
+                    <select id="optMethod" class="train-control mt-2 rounded-lg bg-white text-gray-800 max-w-md">
+                        {% for m in opt_methods %}
+                        <option value="{{ m }}" {% if m == 'Powell' %}selected{% endif %}>
+                            {{ m }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <div id="optSummary" class="text-gray-600 text-sm mt-3"></div>
+                </div>
+                <button type="button" id="btnOptimize" class="btn btn-primary btn-pill font-semibold w-full sm:w-auto mt-3" disabled>Jalankan optimasi
+                </button>
+            </div>
+        </section>
+
+        <section class="card rounded-2xl card-compact col-span-full charts train-section-wide h-full" id="step-charts">
+            <div class="flex flex-col h-full gap-4">
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">
+                        9. Visualisasi time series
+                    </h3>
+                    <!-- <p class="text-gray-500 text-sm">
+                        Berdasarkan hasil optimasi: oil &amp; water (aktual vs prediksi), choke aktual vs rekomendasi.
+                    </p> -->
+                </div>
+                <div class="flex-1 flex flex-col gap-4 overflow-auto">
+                    <div class="chart-box"><canvas id="chartOil"></canvas></div>
+                    <div class="chart-box"><canvas id="chartWater"></canvas></div>
+                    <div class="chart-box"><canvas id="chartChoke"></canvas></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="card rounded-2xl card-compact col-span-full train-section-wide h-full" id="step-save">
+            <div class="flex flex-col h-full justify-between gap-4">
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">
+                        10. Simpan model
+                    </h3>
+                    <!-- <p class="text-gray-500 text-sm mb-4">
+                        Setelah grafik tampil, simpan pasangan model oil &amp; water ke folder 
+                        <code class="text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
+                            ml_models/
+                        </code>
+                        dengan nama yang Anda tentukan.
+                    </p> -->
+                    <div id="saveModelSummary" class="text-gray-600 text-sm mt-3"></div>
+                </div>
+                <button type="button" id="btnOpenSaveModel" class="btn btn-success btn-pill font-semibold w-full sm:w-auto" disabled>Simpan model…
+                </button>
+            </div>
+        </section>
+
+    </div>
+</div>
+
+<div id="trainModal" class="train-modal hidden" role="dialog" aria-modal="true" aria-labelledby="trainModalTitle">
+    <div class="train-modal-inner train-modal-inner--feature">
+        <header class="train-modal-header">
+            <h3 id="trainModalTitle" class="text-xl font-semibold text-gray-800">
+                Pilih kolom
+            </h3>
+            <p class="text-gray-500 text-sm mt-2 leading-relaxed">
+                Centang kolom sebagai fitur (wajib sertakan
+                <strong class="text-gray-800 font-medium">AVG Choke size</strong>
+                untuk optimasi choke). Lalu pilih kolom target oil dan water.
+            </p>
+        </header>
+
+        <div class="train-modal-section">
+            <p class="train-modal-section-label">Kolom fitur</p>
+            <div id="featureChecksScroll" class="feature-checks-scroll">
+                <div id="featureChecks" class="checks checks--feature" role="group" aria-label="Kolom fitur"></div>
+            </div>
+        </div>
+
+        <div class="train-modal-section train-modal-section--targets">
+            <p class="train-modal-section-label">Target</p>
+            <div class="train-modal-targets">
+                <div class="field-group mb-0">
+                    <label class="font-medium text-gray-700" for="targetOil">Target oil</label>
+                    <select id="targetOil" class="train-control mt-2 rounded-lg bg-white text-gray-800 w-full" aria-label="Target oil"></select>
+                </div>
+                <div class="field-group mb-0">
+                    <label class="font-medium text-gray-700" for="targetWater">Target water</label>
+                    <select id="targetWater" class="train-control mt-2 rounded-lg bg-white text-gray-800 w-full" aria-label="Target water"></select>
+                </div>
+            </div>
+        </div>
+
+        <footer class="modal-actions train-modal-footer">
+            <button type="button" id="btnModalCancel" class="btn btn-ghost btn-pill">Batal</button>
+            <button type="button" id="btnModalSave" class="btn btn-primary btn-pill">Simpan</button>
+        </footer>
+    </div>
+</div>
+
+<div id="saveModelModal" class="train-modal hidden" role="dialog" aria-modal="true" aria-labelledby="saveModelModalTitle">
+    <div class="train-modal-inner">
+        <h3 id="saveModelModalTitle" class="text-xl font-semibold text-gray-800 mb-2">Simpan model</h3>
+        <p class="text-gray-500 text-sm">File akan disimpan untuk digunakan di <i>daily_optimization</i>.</p>
+        <div id="saveModelMetrics" class="save-model-metrics" aria-live="polite"></div>
+        <label class="font-medium text-gray-700 mt-4 block">Nama model</label>
+        <input type="text" id="modelNameInput" class="train-control mt-2 rounded-lg w-full" placeholder="mis. sumur_a_forecast" maxlength="120" autocomplete="off" />
+        <div class="modal-actions">
+            <button type="button" id="btnSaveModelCancel" class="btn btn-ghost btn-pill">Batal</button>
+            <button type="button" id="btnSaveModelConfirm" class="btn btn-success btn-pill">Simpan</button>
+        </div>
+    </div>
+</div>
+
+<div id="trainToast" class="train-toast hidden" role="status"></div>
+<script id="train-config" type="application/json">{{ {'default_features': default_features } | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/train_pipeline.js') }}"></script>
+{% endblock %}

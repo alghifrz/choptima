@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Prediction - Oiloz{% endblock %}
+{% block title %}Daily optimization - Oiloz{% endblock %}
 
 {% block content %}
 
@@ -18,12 +18,21 @@
                 </svg>
                 Daily Input
             </h2>
-            <p class="text-gray-500 text-sm mt-1">Configure parameters for prediction</p>
+            <p class="text-gray-500 text-sm mt-1">Pilih model dari <code class="text-xs bg-gray-100 px-1 rounded">ml_models</code>, lalu isi parameter operasi.</p>
+        </div>
+
+        <!-- Model (first) -->
+        <div class="field-group">
+            <label class="font-medium text-gray-700" for="modelSelect">Model</label>
+            <select id="modelSelect" class="mt-2 rounded-lg bg-white text-gray-800 w-full" required>
+                <option value="">Memuat daftar model…</option>
+            </select>
+            <p id="modelSelectHint" class="text-gray-500 text-xs mt-1 hidden"></p>
         </div>
 
         <!-- Date Input -->
         <div class="field-group">
-            <label class="font-medium text-gray-700">Prediction Date</label>
+            <label class="font-medium text-gray-700">Tanggal operasi</label>
             <input type="date" id="predictionDate" class="mt-2 rounded-lg">
         </div>
 
@@ -38,7 +47,7 @@
                 <path d="M19.5 12C19.5 7.58172 15.9183 4 11.5 4C7.08172 4 3.5 7.58172 3.5 12C3.5 16.4183 7.08172 20 11.5 20C15.9183 20 19.5 16.4183 19.5 12Z" stroke="white" stroke-width="1.5"/>
                 <path d="M11.5 8V12L14.5 14" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
-            Run Prediction
+            Jalankan optimasi
         </button>
     </div>
 
@@ -59,14 +68,14 @@
                 </svg>
                 Prediction Results
             </h2>
-            <p class="text-gray-500 text-sm mt-1">Compare current vs recommended values</p>
+            <p class="text-gray-500 text-sm mt-1">Perbandingan kondisi aktual vs rekomendasi optimasi</p>
         </div>
 
         <!-- Loading State -->
         <div id="loadingSpinner" class="hidden">
             <div class="flex flex-col items-center justify-center py-16">
                 <div class="spinner mb-4"></div>
-                <p class="text-gray-600 font-medium">Processing your prediction...</p>
+                <p class="text-gray-600 font-medium">Memproses optimasi…</p>
             </div>
         </div>
 
@@ -106,10 +115,13 @@
                         <p class="stat-unit">Barel</p>
                     </div>
                 </div>
-                <p class="text-xs text-gray-500 mt-3">
-                    <span class="font-semibold text-gray-700">Choke Setting:</span> 
-                    <span id="chokeActual" class="text-gray-700 font-medium">-</span>
-                </p>
+                <div class="mt-3 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2.5">
+                    <p class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Choke — setting lapangan</p>
+                    <p class="text-2xl font-bold text-blue-600 mt-0.5" id="chokeActualPct">-</p>
+                    <p class="text-xs text-gray-500 mt-1">
+                        Nilai fraksi input model (0–1): <span id="chokeActual" class="text-gray-700 font-medium">-</span>
+                    </p>
+                </div>
             </div>
 
             <!-- Recommended Production -->
@@ -132,10 +144,13 @@
                         <p class="stat-unit">Barel</p>
                     </div>
                 </div>
-                <p class="text-xs text-gray-500 mt-3">
-                    <span class="font-semibold text-gray-700">Recommended Choke:</span> 
-                    <span id="chokeOptimal" class="text-green-700 font-medium">-</span>
-                </p>
+                <div class="mt-3 rounded-lg bg-emerald-50/80 border border-emerald-100 px-3 py-2.5">
+                    <p class="text-xs font-semibold text-emerald-800 uppercase tracking-wide">Choke rekomendasi — untuk lapangan</p>
+                    <p class="text-2xl font-bold text-green-600 mt-0.5" id="chokeOptimalPct">-</p>
+                    <p class="text-xs text-gray-600 mt-1">
+                        Nilai fraksi (model): <span id="chokeOptimal" class="text-green-800 font-medium">-</span>
+                    </p>
+                </div>
             </div>
 
             <!-- Potential Gains -->
@@ -203,11 +218,56 @@
 <script>
     const FEATURES = {{ features | tojson }};
     const FEATURE_DESCRIPTIONS = {{ feature_descriptions | tojson }};
-    
+    const DEFAULT_MODEL_STEM = {{ default_model_stem | tojson }};
+
+    async function loadMlModels() {
+        const sel = document.getElementById('modelSelect');
+        const hint = document.getElementById('modelSelectHint');
+        const submitBtn = document.getElementById('submitBtn');
+        submitBtn.disabled = true;
+        sel.innerHTML = '<option value="">Memuat…</option>';
+        try {
+            const r = await fetch('/api/ml-models');
+            const d = await r.json();
+            const models = d.models || [];
+            sel.innerHTML = '';
+            if (!models.length) {
+                const o = document.createElement('option');
+                o.value = '';
+                o.textContent = 'Tidak ada model di ml_models';
+                sel.appendChild(o);
+                sel.disabled = true;
+                hint.textContent = 'Letakkan pasangan model_oil_[nama].pkl dan model_water_[nama].pkl di folder ml_models.';
+                hint.classList.remove('hidden');
+                return;
+            }
+            models.forEach(function (m) {
+                const o = document.createElement('option');
+                o.value = m.stem;
+                o.textContent = m.label || m.stem;
+                sel.appendChild(o);
+            });
+            sel.disabled = false;
+            hint.classList.add('hidden');
+            if (DEFAULT_MODEL_STEM && models.some(function (x) { return x.stem === DEFAULT_MODEL_STEM; })) {
+                sel.value = DEFAULT_MODEL_STEM;
+            }
+            submitBtn.disabled = false;
+        } catch (e) {
+            sel.innerHTML = '';
+            const o = document.createElement('option');
+            o.value = '';
+            o.textContent = 'Gagal memuat daftar model';
+            sel.appendChild(o);
+            sel.disabled = true;
+            hint.textContent = 'Periksa koneksi lalu muat ulang halaman.';
+            hint.classList.remove('hidden');
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
-        // Initialize form fields
         const inputFields = document.getElementById('inputFields');
-        
+
         FEATURES.forEach(feature => {
             const fieldDiv = document.createElement('div');
             fieldDiv.className = 'field-group';
@@ -215,25 +275,31 @@
                 <label class="font-medium text-gray-700">
                     ${FEATURE_DESCRIPTIONS[feature] || feature}
                 </label>
-                <input type="number" 
-                       data-feature="${feature}" 
-                       class="featureInput mt-2 rounded-lg" 
-                       placeholder="Enter value" 
+                <input type="number"
+                       data-feature="${feature}"
+                       class="featureInput mt-2 rounded-lg"
+                       placeholder="Enter value"
                        step="0.01">
             `;
             inputFields.appendChild(fieldDiv);
         });
-        
-        // Set today's date
+
         document.getElementById('predictionDate').valueAsDate = new Date();
-        
-        // Show empty state
         document.getElementById('emptyState').classList.remove('hidden');
-        
-        // Submit button
-        document.getElementById('submitBtn').addEventListener('click', submitPrediction);
+
+        loadMlModels().then(function () {
+            document.getElementById('submitBtn').addEventListener('click', submitPrediction);
+        });
     });
     
+    /* Choke model: fraksi 0-1 ke persen lapangan; jika nilai besar (sudah persen), tampilkan apa adanya */
+    function chokeFieldPercent(v) {
+        var n = Number(v);
+        if (Number.isNaN(n)) return '-';
+        var pct = n <= 1.25 ? n * 100 : n;
+        return pct.toFixed(1) + '%';
+    }
+
     async function submitPrediction() {
         const submitBtn = document.getElementById('submitBtn');
         const loadingSpinner = document.getElementById('loadingSpinner');
@@ -241,14 +307,41 @@
         const resultsBox = document.getElementById('resultsBox');
         const emptyState = document.getElementById('emptyState');
         
-        // Collect form data
-        const features = {};
-        document.querySelectorAll('.featureInput').forEach(input => {
-            features[input.dataset.feature] = parseFloat(input.value) || 0;
-        });
-        
         const predictionDate = document.getElementById('predictionDate').value;
-        
+        const modelStem = document.getElementById('modelSelect').value;
+
+        if (!modelStem) {
+            errorBox.classList.remove('hidden');
+            document.getElementById('errorMessage').textContent = 'Pilih model terlebih dahulu.';
+            return;
+        }
+
+        const features = {};
+        const featureInputs = document.querySelectorAll('.featureInput');
+        for (let i = 0; i < featureInputs.length; i++) {
+            const input = featureInputs[i];
+            const key = input.dataset.feature;
+            const raw = String(input.value != null ? input.value : '').trim();
+            if (raw === '') {
+                errorBox.classList.remove('hidden');
+                resultsBox.classList.add('hidden');
+                emptyState.classList.add('hidden');
+                document.getElementById('errorMessage').textContent =
+                    'Isi semua parameter (field tidak boleh kosong).';
+                return;
+            }
+            const n = Number(raw);
+            if (Number.isNaN(n)) {
+                errorBox.classList.remove('hidden');
+                resultsBox.classList.add('hidden');
+                emptyState.classList.add('hidden');
+                document.getElementById('errorMessage').textContent =
+                    'Nilai tidak valid: ' + (FEATURE_DESCRIPTIONS[key] || key);
+                return;
+            }
+            features[key] = n;
+        }
+
         // Disable button and show loading
         submitBtn.disabled = true;
         loadingSpinner.classList.remove('hidden');
@@ -263,6 +356,7 @@
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
+                    model_stem: modelStem,
                     features: features,
                     prediction_date: predictionDate
                 })
@@ -272,17 +366,23 @@
             
             if (!response.ok) {
                 errorBox.classList.remove('hidden');
-                document.getElementById('errorMessage').textContent = data.error || 'Unknown error';
+                var errLine =
+                    data.error ||
+                    (data.details && Array.isArray(data.details) ? data.details.join('; ') : '') ||
+                    'Unknown error';
+                document.getElementById('errorMessage').textContent = errLine;
             } else {
                 const pred = data.prediction;
                 
                 // Update results
                 document.getElementById('oilActual').textContent = pred.oil_actual.toFixed(2);
                 document.getElementById('waterActual').textContent = pred.water_actual.toFixed(2);
+                document.getElementById('chokeActualPct').textContent = chokeFieldPercent(pred.choke_actual);
                 document.getElementById('chokeActual').textContent = pred.choke_actual.toFixed(3);
                 
                 document.getElementById('oilOptimal').textContent = pred.oil_optimal.toFixed(2);
                 document.getElementById('waterOptimal').textContent = pred.water_optimal.toFixed(2);
+                document.getElementById('chokeOptimalPct').textContent = chokeFieldPercent(pred.choke_recommended);
                 document.getElementById('chokeOptimal').textContent = pred.choke_recommended.toFixed(3);
                 
                 document.getElementById('oilGain').textContent = '+' + pred.oil_gain.toFixed(2);

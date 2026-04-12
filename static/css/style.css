@@ -134,11 +134,11 @@ button, .btn {
     color: white;
 }
 
-.btn-primary:hover {
+.btn-primary:hover:not(:disabled) {
     opacity: 0.9;
 }
 
-.btn-primary:active {
+.btn-primary:active:not(:disabled) {
     opacity: 0.85;
 }
 
@@ -149,7 +149,7 @@ button, .btn {
     border: 1.5px solid var(--color-accent-blue);
 }
 
-.btn-ghost:hover {
+.btn-ghost:hover:not(:disabled) {
     background: var(--color-accent-blue-light);
 }
 
@@ -159,7 +159,7 @@ button, .btn {
     color: white;
 }
 
-.btn-danger:hover {
+.btn-danger:hover:not(:disabled) {
     opacity: 0.9;
 }
 
@@ -169,7 +169,7 @@ button, .btn {
     color: white;
 }
 
-.btn-success:hover {
+.btn-success:hover:not(:disabled) {
     opacity: 0.9;
 }
 
@@ -179,13 +179,15 @@ button, .btn {
     color: white;
 }
 
-.btn-cta:hover {
+.btn-cta:hover:not(:disabled) {
     opacity: 0.9;
 }
 
-button:disabled {
+button:disabled,
+.btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+    pointer-events: none;
 }
 
 /* ============ Form Elements ============ */
