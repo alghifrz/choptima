@@ -128,6 +128,26 @@ button, .btn {
     font-size: 0.875rem;
 }
 
+.btn-tab {
+    border-radius: 2rem;
+    padding: 0.6rem 1.2rem;
+    background: transparent;
+    color: var(--color-text-secondary);
+    border: 1.5px solid var(--color-border);
+}
+
+.btn-tab:hover {
+    /* background: var(--color-accent-blue-light); */
+    color: var(--color-accent-blue);
+    border-color: var(--color-accent-blue);
+}
+
+.btn-tab:active {
+    background: var(--color-accent-blue-light);
+    color: var(--color-accent-blue);
+    border-color: var(--color-accent-blue);
+}
+
 /* Primary Button */
 .btn-primary, button[type="submit"]:not(.btn-ghost):not(.btn-danger) {
     background: linear-gradient(135deg, var(--color-accent-blue) 0%, #3b7dd4 100%);

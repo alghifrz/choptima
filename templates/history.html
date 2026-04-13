@@ -2,11 +2,35 @@
 
 {% block title %}History - Oiloz{% endblock %}
 
+{% block extra_head %}
+<style>
+  .btn-tab {
+    position: relative;
+    background: transparent;
+    border: none;
+    padding: 0.75rem 0.25rem;
+    color: #6b7280;
+    font-weight: 600;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    justify-content: center;
+  }
+  .btn-tab:hover:not(:disabled) {
+    color: #374151;
+    background: transparent;
+  }
+  .btn-tab.is-active {
+    color: var(--color-accent-blue, #4a90e2);
+    border-bottom-color: var(--color-accent-blue, #4a90e2);
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <!-- Header Section -->
 <div class="card rounded-2xl mb-8">
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
         <div>
             <h2 class="text-2xl font-semibold text-gray-800 flex items-center gap-2">
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 1.25rem; height: 1.25rem;">
@@ -15,20 +39,33 @@
                     <path d="M21 8.5V17C21 20.7712 20.2288 22 16.5 22H7.5C3.77118 22 3 20.7712 3 17V8.5C3 4.77118 3.77118 3.5 7.5 3.5H16.5C20.2288 3.5 21 4.77118 21 8.5Z" stroke="#a855f7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                     <path d="M9 14H15" stroke="#a855f7" stroke-width="1.5" stroke-linecap="round"/>
                 </svg>
-                Prediction History
+                History
             </h2>
-            <p class="text-gray-500 text-sm mt-1">Track all your previous predictions</p>
+            <p class="text-gray-500 text-sm mt-1">Pisahkan riwayat Daily optimization dan Train Model.</p>
         </div>
-        <button id="exportBtn" class="btn btn-primary btn-pill w-full sm:w-auto">
-            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 0.9rem; height: 0.9rem;">
-                <path d="M12 2V14M12 14L7 9M12 14L17 9" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M3 14H3.5C4.77 14 6 15.23 6 16.5C6 17.77 4.77 19 3.5 19H3C1.9 19 1 18.1 1 17V15C1 13.9 1.9 13 3 13V14" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-                <path d="M21 14H20.5C19.23 14 18 15.23 18 16.5C18 17.77 19.23 19 20.5 19H21C22.1 19 23 18.1 23 17V15C23 13.9 22.1 13 21 13V14" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-            Export CSV
-        </button>
+        <div class="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-end">
+            <button id="exportBtn" class="btn btn-primary btn-pill w-full sm:w-auto">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 0.9rem; height: 0.9rem;">
+                    <path d="M12 2V14M12 14L7 9M12 14L17 9" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M3 14H3.5C4.77 14 6 15.23 6 16.5C6 17.77 4.77 19 3.5 19H3C1.9 19 1 18.1 1 17V15C1 13.9 1.9 13 3 13V14" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                    <path d="M21 14H20.5C19.23 14 18 15.23 18 16.5C18 17.77 19.23 19 20.5 19H21C22.1 19 23 18.1 23 17V15C23 13.9 22.1 13 21 13V14" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                Export CSV (Daily)
+            </button>
+        </div>
     </div>
 </div>
+
+<div class="flex items-center gap-8 justify-between w-full mb-6">
+    <button id="tabDaily" type="button" class="btn btn-tab is-active w-1/2">Daily optimization</button>
+    <button id="tabTrain" type="button" class="btn btn-tab w-1/2">Train Model</button>
+</div>
+<!-- Tabs (above table) -->
+<!-- <div class="card rounded-2xl mb-6">
+    <p class="text-gray-500 text-sm mt-3">Pilih tab untuk melihat tabel history.</p>
+</div> -->
+<!-- <div class="card rounded-2xl mb-6">
+</div> -->
 
 <!-- Loading State -->
 <div id="loadingSpinner" class="card rounded-2xl">
@@ -38,38 +75,67 @@
     </div>
 </div>
 
-<!-- History Table -->
-<div id="historyTable" class="hidden card rounded-2xl overflow-hidden mb-6">
-    <div class="overflow-x-auto">
-        <table style="width: 100%; min-width: 800px;">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th class="text-right">Oil (Actual)</th>
-                    <th class="text-right">Oil (Optimal)</th>
-                    <th class="text-right">Oil Gain</th>
-                    <th class="text-right">Choke (Actual)</th>
-                    <th class="text-right">Choke (Recommended)</th>
-                </tr>
-            </thead>
-            <tbody id="historyTableBody">
-            </tbody>
-        </table>
+<!-- Daily optimization: History Table -->
+<section id="dailySection" class="hidden">
+    <div class="card rounded-2xl overflow-hidden mb-6">
+        <div class="overflow-x-auto">
+            <table style="width: 100%; min-width: 1100px;">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th class="text-right">Oil (Actual)</th>
+                        <th class="text-right">Oil (Optimal)</th>
+                        <th class="text-right">Oil Gain</th>
+                        <th class="text-right">Choke (Actual)</th>
+                        <th class="text-right">Choke (Recommended)</th>
+                    </tr>
+                </thead>
+                <tbody id="dailyTableBody"></tbody>
+            </table>
+        </div>
     </div>
-</div>
 
-<!-- Pagination Controls -->
-<div id="paginationControls" class="hidden flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
-    <button id="prevBtn" class="btn btn-ghost btn-pill" onclick="previousPage()">← Previous</button>
-    <div id="pageInfo" class="text-gray-600 font-medium text-sm">Page 1</div>
-    
-    <!-- Page Jump Dropdown -->
-    <select id="pageJump" class="px-3 py-2 rounded-lg border border-gray-300 text-gray-700 bg-white hover:border-gray-400 transition cursor-pointer" onchange="jumpToPage(this.value)">
-        <option value="">Jump to page...</option>
-    </select>
-    
-    <button id="nextBtn" class="btn btn-ghost btn-pill" onclick="nextPage()">Next →</button>
-</div>
+    <div id="dailyPagination" class="hidden flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
+        <button id="dailyPrevBtn" class="btn btn-ghost btn-pill" type="button">← Previous</button>
+        <div id="dailyPageInfo" class="text-gray-600 font-medium text-sm">Page 1</div>
+        <select id="dailyPageJump" class="px-3 py-2 rounded-lg border border-gray-300 text-gray-700 bg-white hover:border-gray-400 transition cursor-pointer">
+            <option value="">Jump to page...</option>
+        </select>
+        <button id="dailyNextBtn" class="btn btn-ghost btn-pill" type="button">Next →</button>
+    </div>
+</section>
+
+<!-- Train Model: History Table -->
+<section id="trainSection" class="hidden">
+    <div class="card rounded-2xl overflow-hidden mb-6">
+        <div class="overflow-x-auto">
+            <table style="width: 100%; min-width: 1100px;">
+                <thead>
+                    <tr>
+                        <th>Created</th>
+                        <th>Model</th>
+                        <th>Well</th>
+                        <th>Algorithm</th>
+                        <th class="text-right">Test R² (Oil)</th>
+                        <th class="text-right">Test R² (Water)</th>
+                        <th class="text-right">CV R² μ (Oil)</th>
+                        <th class="text-right">CV R² μ (Water)</th>
+                    </tr>
+                </thead>
+                <tbody id="trainTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="trainPagination" class="hidden flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
+        <button id="trainPrevBtn" class="btn btn-ghost btn-pill" type="button">← Previous</button>
+        <div id="trainPageInfo" class="text-gray-600 font-medium text-sm">Page 1</div>
+        <select id="trainPageJump" class="px-3 py-2 rounded-lg border border-gray-300 text-gray-700 bg-white hover:border-gray-400 transition cursor-pointer">
+            <option value="">Jump to page...</option>
+        </select>
+        <button id="trainNextBtn" class="btn btn-ghost btn-pill" type="button">Next →</button>
+    </div>
+</section>
 
 <!-- Empty State -->
 <div id="emptyState" class="hidden card rounded-2xl">
@@ -89,13 +155,55 @@
 {% block scripts %}
 <script>
     const ITEMS_PER_PAGE = 10;
-    let allPredictions = [];
-    let currentPage = 1;
+    let allDaily = [];
+    let allTrain = [];
+    let dailyPage = 1;
+    let trainPage = 1;
+    let activeTab = 'daily';
 
-    document.addEventListener('DOMContentLoaded', loadHistory);
-    document.getElementById('exportBtn').addEventListener('click', exportHistory);
+    document.addEventListener('DOMContentLoaded', function () {
+        document.getElementById('exportBtn').addEventListener('click', exportHistory);
+        document.getElementById('tabDaily').addEventListener('click', function () { setTab('daily'); });
+        document.getElementById('tabTrain').addEventListener('click', function () { setTab('train'); });
 
-    async function loadHistory() {
+        document.getElementById('dailyPrevBtn').addEventListener('click', function () { dailyPrev(); });
+        document.getElementById('dailyNextBtn').addEventListener('click', function () { dailyNext(); });
+        document.getElementById('dailyPageJump').addEventListener('change', function () { dailyJump(this.value); });
+
+        document.getElementById('trainPrevBtn').addEventListener('click', function () { trainPrev(); });
+        document.getElementById('trainNextBtn').addEventListener('click', function () { trainNext(); });
+        document.getElementById('trainPageJump').addEventListener('change', function () { trainJump(this.value); });
+
+        loadDailyHistory();
+        loadTrainHistory();
+        setTab('daily');
+    });
+
+    function setTab(tab) {
+        activeTab = tab;
+        const dailyBtn = document.getElementById('tabDaily');
+        const trainBtn = document.getElementById('tabTrain');
+        const dailySection = document.getElementById('dailySection');
+        const trainSection = document.getElementById('trainSection');
+
+        if (tab === 'daily') {
+            dailyBtn.classList.add('is-active');
+            trainBtn.classList.remove('is-active');
+            dailySection.classList.remove('hidden');
+            trainSection.classList.add('hidden');
+            document.getElementById('exportBtn').classList.remove('hidden');
+            document.getElementById('exportBtn').textContent = 'Export CSV (Daily)';
+        } else {
+            trainBtn.classList.add('is-active');
+            dailyBtn.classList.remove('is-active');
+            trainSection.classList.remove('hidden');
+            dailySection.classList.add('hidden');
+            document.getElementById('exportBtn').classList.remove('hidden');
+            document.getElementById('exportBtn').textContent = 'Export CSV (Train)';
+        }
+    }
+
+    async function loadDailyHistory() {
         try {
             const response = await fetch('/api/history?limit=1000');
             const data = await response.json();
@@ -107,17 +215,17 @@
                 return;
             }
 
-            allPredictions = data.data;
-            currentPage = 1;
-            displayPage(currentPage);
-            document.getElementById('historyTable').classList.remove('hidden');
-            updatePagination();
+            allDaily = data.data;
+            dailyPage = 1;
+            renderDailyPage(dailyPage);
+            document.getElementById('dailySection').classList.remove('hidden');
+            updateDailyPagination();
 
         } catch (error) {
             document.getElementById('loadingSpinner').classList.add('hidden');
-            const historyTable = document.getElementById('historyTable');
-            historyTable.classList.remove('hidden');
-            historyTable.innerHTML = `
+            const dailySection = document.getElementById('dailySection');
+            dailySection.classList.remove('hidden');
+            dailySection.innerHTML = `
                 <div class="alert alert-error">
                     <i class="fas fa-exclamation-circle alert-icon"></i>
                     Error loading history: ${error.message}
@@ -126,12 +234,25 @@
         }
     }
 
-    function displayPage(page) {
+    async function loadTrainHistory() {
+        try {
+            const response = await fetch('/api/train-history?limit=1000');
+            const data = await response.json();
+            allTrain = data.data || [];
+            trainPage = 1;
+            renderTrainPage(trainPage);
+            updateTrainPagination();
+        } catch (e) {
+            // keep quiet; train tab will appear empty if none
+        }
+    }
+
+    function renderDailyPage(page) {
         const startIdx = (page - 1) * ITEMS_PER_PAGE;
         const endIdx = startIdx + ITEMS_PER_PAGE;
-        const pageData = allPredictions.slice(startIdx, endIdx);
+        const pageData = allDaily.slice(startIdx, endIdx);
 
-        const tableBody = document.getElementById('historyTableBody');
+        const tableBody = document.getElementById('dailyTableBody');
         tableBody.innerHTML = '';
 
         pageData.forEach(prediction => {
@@ -153,63 +274,135 @@
         });
     }
 
-    function updatePagination() {
-        const totalPages = Math.ceil(allPredictions.length / ITEMS_PER_PAGE);
+    function renderTrainPage(page) {
+        const startIdx = (page - 1) * ITEMS_PER_PAGE;
+        const endIdx = startIdx + ITEMS_PER_PAGE;
+        const pageData = allTrain.slice(startIdx, endIdx);
+
+        const tableBody = document.getElementById('trainTableBody');
+        tableBody.innerHTML = '';
+
+        pageData.forEach(r => {
+            const row = document.createElement('tr');
+            const dt = (r.created_at || '').slice(0, 19).replace('T', ' ');
+            row.innerHTML = `
+                <td>${dt || '-'}</td>
+                <td class="text-gray-800 font-semibold">${r.model_name || '-'}</td>
+                <td class="text-gray-700">${r.well_name || '-'}</td>
+                <td class="text-gray-700">${r.algorithm || '-'}</td>
+                <td class="text-right text-gray-700">${r.test_r2_oil != null ? Number(r.test_r2_oil).toFixed(4) : '-'}</td>
+                <td class="text-right text-gray-700">${r.test_r2_water != null ? Number(r.test_r2_water).toFixed(4) : '-'}</td>
+                <td class="text-right text-blue-600 font-semibold">${r.cv_r2_mean_oil != null ? Number(r.cv_r2_mean_oil).toFixed(4) : '-'}</td>
+                <td class="text-right text-blue-600 font-semibold">${r.cv_r2_mean_water != null ? Number(r.cv_r2_mean_water).toFixed(4) : '-'}</td>
+            `;
+            tableBody.appendChild(row);
+        });
+    }
+
+    function updateDailyPagination() {
+        const totalPages = Math.ceil(allDaily.length / ITEMS_PER_PAGE);
         
-        document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
-        document.getElementById('prevBtn').disabled = currentPage === 1;
-        document.getElementById('nextBtn').disabled = currentPage === totalPages;
-        document.getElementById('paginationControls').classList.remove('hidden');
+        document.getElementById('dailyPageInfo').textContent = `Page ${dailyPage} of ${totalPages}`;
+        document.getElementById('dailyPrevBtn').disabled = dailyPage === 1;
+        document.getElementById('dailyNextBtn').disabled = dailyPage === totalPages;
+        document.getElementById('dailyPagination').classList.remove('hidden');
         
         // Update page jump dropdown
-        const pageJump = document.getElementById('pageJump');
+        const pageJump = document.getElementById('dailyPageJump');
         pageJump.innerHTML = '<option value="">Jump to page...</option>';
         for (let i = 1; i <= totalPages; i++) {
             const option = document.createElement('option');
             option.value = i;
             option.textContent = `Page ${i}`;
-            if (i === currentPage) option.selected = true;
+            if (i === dailyPage) option.selected = true;
             pageJump.appendChild(option);
         }
     }
 
-    function previousPage() {
-        if (currentPage > 1) {
-            currentPage--;
-            displayPage(currentPage);
-            updatePagination();
+    function updateTrainPagination() {
+        const totalPages = Math.ceil(allTrain.length / ITEMS_PER_PAGE) || 1;
+        document.getElementById('trainPageInfo').textContent = `Page ${trainPage} of ${totalPages}`;
+        document.getElementById('trainPrevBtn').disabled = trainPage === 1;
+        document.getElementById('trainNextBtn').disabled = trainPage === totalPages;
+        document.getElementById('trainPagination').classList.remove('hidden');
+
+        const pageJump = document.getElementById('trainPageJump');
+        pageJump.innerHTML = '<option value="">Jump to page...</option>';
+        for (let i = 1; i <= totalPages; i++) {
+            const option = document.createElement('option');
+            option.value = i;
+            option.textContent = `Page ${i}`;
+            if (i === trainPage) option.selected = true;
+            pageJump.appendChild(option);
         }
     }
 
-    function nextPage() {
-        const totalPages = Math.ceil(allPredictions.length / ITEMS_PER_PAGE);
-        if (currentPage < totalPages) {
-            currentPage++;
-            displayPage(currentPage);
-            updatePagination();
+    function dailyPrev() {
+        if (dailyPage > 1) {
+            dailyPage--;
+            renderDailyPage(dailyPage);
+            updateDailyPagination();
         }
     }
 
-    function jumpToPage(page) {
+    function dailyNext() {
+        const totalPages = Math.ceil(allDaily.length / ITEMS_PER_PAGE);
+        if (dailyPage < totalPages) {
+            dailyPage++;
+            renderDailyPage(dailyPage);
+            updateDailyPagination();
+        }
+    }
+
+    function dailyJump(page) {
         const pageNum = parseInt(page);
-        if (pageNum && pageNum > 0 && pageNum <= Math.ceil(allPredictions.length / ITEMS_PER_PAGE)) {
-            currentPage = pageNum;
-            displayPage(currentPage);
-            updatePagination();
+        const totalPages = Math.ceil(allDaily.length / ITEMS_PER_PAGE);
+        if (pageNum && pageNum > 0 && pageNum <= totalPages) {
+            dailyPage = pageNum;
+            renderDailyPage(dailyPage);
+            updateDailyPagination();
+        }
+    }
+
+    function trainPrev() {
+        if (trainPage > 1) {
+            trainPage--;
+            renderTrainPage(trainPage);
+            updateTrainPagination();
+        }
+    }
+
+    function trainNext() {
+        const totalPages = Math.ceil(allTrain.length / ITEMS_PER_PAGE) || 1;
+        if (trainPage < totalPages) {
+            trainPage++;
+            renderTrainPage(trainPage);
+            updateTrainPagination();
+        }
+    }
+
+    function trainJump(page) {
+        const pageNum = parseInt(page);
+        const totalPages = Math.ceil(allTrain.length / ITEMS_PER_PAGE) || 1;
+        if (pageNum && pageNum > 0 && pageNum <= totalPages) {
+            trainPage = pageNum;
+            renderTrainPage(trainPage);
+            updateTrainPagination();
         }
     }
 
     async function exportHistory() {
         try {
-            const response = await fetch('/api/history/export');
+            const url = activeTab === 'train' ? '/api/train-history/export' : '/api/history/export';
+            const response = await fetch(url);
             const blob = await response.blob();
             
-            const url = window.URL.createObjectURL(blob);
+            const dlUrl = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url;
-            a.download = 'oil_optimization_history.csv';
+            a.href = dlUrl;
+            a.download = activeTab === 'train' ? 'train_model_history.csv' : 'oil_optimization_history.csv';
             a.click();
-            window.URL.revokeObjectURL(url);
+            window.URL.revokeObjectURL(dlUrl);
         } catch (error) {
             alert('Error exporting: ' + error.message);
         }

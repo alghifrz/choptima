@@ -1,0 +1,14 @@
+{
+  "feature_columns": [
+    "ON_STREAM_HRS",
+    "AVG_DOWNHOLE_PRESSURE",
+    "AVG_DOWNHOLE_TEMPERATURE",
+    "AVG_DP_TUBING",
+    "AVG Choke size",
+    "AVG_WHP_P",
+    "AVG_WHT_P",
+    "DP_CHOKE_SIZE"
+  ],
+  "target_oil": "BORE_OIL_VOL",
+  "target_water": "BORE_WAT_VOL"
+}

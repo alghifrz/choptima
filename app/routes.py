@@ -1,20 +1,19 @@
 from flask import Blueprint, render_template, request, jsonify, send_file
 from app import db
-from app.models import Prediction, BatchUpload
+from app.models import Prediction, TrainingRun
 from app.utils import (
     validate_input,
     predict_production,
     optimize_choke,
-    process_excel_file,
     FEATURE_NAMES,
     list_model_pairs,
     get_models_for_stem,
     default_model_stem_from_config,
     resolve_feature_order,
+    forecast_tomorrow_from_optimization,
 )
 from app.config import SELECTED_WELL, FEATURE_DESCRIPTIONS
 from datetime import datetime, date
-import os
 import pandas as pd
 from io import BytesIO
 
@@ -47,11 +46,6 @@ def history():
     """View prediction history"""
     predictions = Prediction.query.order_by(Prediction.created_at.desc()).all()
     return render_template('history.html', predictions=predictions)
-
-@bp.route('/upload')
-def upload_page():
-    """Batch upload page"""
-    return render_template('upload.html', well_name=SELECTED_WELL)
 
 # ============================================
 # API ROUTES - PREDICTION
@@ -120,6 +114,18 @@ def api_predict():
         )
         if opt_error:
             return jsonify({'error': opt_error}), 500
+
+        # Forecast next day (tomorrow) using forecast bundle if available.
+        forecast = None
+        try:
+            forecast = forecast_tomorrow_from_optimization(
+                prediction_date_str,
+                float(opt_result.get("oil_optimal", pred_result["oil"])),
+                float(opt_result.get("water_optimal", pred_result["water"])),
+                input_features,
+            )
+        except Exception:
+            forecast = None
         
         # Save to database
         try:
@@ -153,113 +159,8 @@ def api_predict():
                 'water_reduction': round(opt_result['water_reduction'], 2),
                 'choke_actual': round(input_features['AVG Choke size'], 3),
                 'choke_recommended': round(opt_result['choke_optimal'], 3)
-            }
-        }), 200
-    
-    except Exception as e:
-        return jsonify({'error': f'Server error: {str(e)}'}), 500
-
-
-# ============================================
-# API ROUTES - BATCH UPLOAD
-# ============================================
-
-@bp.route('/api/upload-excel', methods=['POST'])
-def api_upload_excel():
-    """
-    Batch upload and process Excel file
-    
-    Expected: multipart/form-data with 'file' key
-    """
-    try:
-        if 'file' not in request.files:
-            return jsonify({'error': 'No file provided'}), 400
-        
-        file = request.files['file']
-        
-        if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
-        
-        if not file.filename.endswith(('.xlsx', '.xls')):
-            return jsonify({'error': 'Only Excel files (.xlsx, .xls) are supported'}), 400
-        
-        # Save file temporarily
-        temp_dir = 'uploads'
-        os.makedirs(temp_dir, exist_ok=True)
-        filepath = os.path.join(temp_dir, file.filename)
-        file.save(filepath)
-        
-        # Create batch upload record
-        batch = BatchUpload(
-            filename=file.filename,
-            total_rows=0,
-            processed_rows=0,
-            failed_rows=0,
-            status='processing'
-        )
-        db.session.add(batch)
-        db.session.commit()
-        
-        # Process file
-        results = process_excel_file(filepath)
-        
-        if isinstance(results, dict) and 'error' in results:
-            batch.status = 'failed'
-            db.session.commit()
-            return jsonify({'error': results['error']}), 400
-        
-        # Save results to database
-        successful = 0
-        failed = 0
-        
-        for result in results:
-            if result['success']:
-                successful += 1
-                pred_data = result['data']
-                
-                # Extract only the features we need
-                input_features = {f: pred_data[f] for f in FEATURE_NAMES}
-                
-                # Save prediction
-                prediction_obj = Prediction(
-                    input_data=input_features,
-                    predicted_oil=pred_data['predicted_oil'],
-                    predicted_water=pred_data['predicted_water'],
-                    choke_actual=input_features['AVG Choke size'],
-                    choke_recommended=pred_data['choke_recommended'],
-                    potential_oil_gain=pred_data['oil_gain'],
-                    potential_water_reduction=pred_data['water_reduction'],
-                    prediction_date=date.today()
-                )
-                db.session.add(prediction_obj)
-            else:
-                failed += 1
-        
-        db.session.commit()
-        
-        # Update batch record
-        batch.total_rows = len(results)
-        batch.processed_rows = successful
-        batch.failed_rows = failed
-        batch.status = 'completed'
-        batch.completed_at = datetime.utcnow()
-        db.session.commit()
-        
-        # Clean up temp file
-        try:
-            os.remove(filepath)
-        except:
-            pass
-        
-        return jsonify({
-            'success': True,
-            'batch_id': batch.id,
-            'summary': {
-                'total': batch.total_rows,
-                'processed': batch.processed_rows,
-                'failed': batch.failed_rows
             },
-            'results': results
+            'forecast_tomorrow': forecast,
         }), 200
     
     except Exception as e:
@@ -285,6 +186,45 @@ def api_get_history():
             'data': [p.to_dict() for p in predictions]
         }), 200
     
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/train-history', methods=['GET'])
+def api_get_train_history():
+    """Get train-model history (saved model runs)."""
+    try:
+        limit = request.args.get('limit', 200, type=int)
+        rows = TrainingRun.query.order_by(TrainingRun.created_at.desc()).limit(limit).all()
+        return jsonify(
+            {
+                "success": True,
+                "count": len(rows),
+                "data": [r.to_dict() for r in rows],
+            }
+        ), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@bp.route('/api/train-history/export', methods=['GET'])
+def api_export_train_history():
+    """Export train-model history as CSV."""
+    try:
+        rows = TrainingRun.query.order_by(TrainingRun.created_at.desc()).all()
+        data = [r.to_dict() for r in rows]
+        df = pd.DataFrame(data)
+
+        output = BytesIO()
+        df.to_csv(output, index=False)
+        output.seek(0)
+
+        return send_file(
+            output,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name='train_model_history.csv',
+        )
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

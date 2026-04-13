@@ -103,7 +103,7 @@ Tracks batch file processing metadata.
 - `GET /api/health`: Health check
 
 ### Batch Upload
-- `POST /api/upload-excel`: Upload and process Excel file
+Fitur Batch Upload sudah dihapus dari aplikasi.
 
 ### History
 - `GET /api/history`: Get prediction history

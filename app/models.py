@@ -77,3 +77,67 @@ class BatchUpload(db.Model):
             'uploaded_at': self.uploaded_at.isoformat(),
             'completed_at': self.completed_at.isoformat() if self.completed_at else None
         }
+
+
+class TrainingRun(db.Model):
+    """
+    Store train-model history when saving trained models.
+    """
+
+    __tablename__ = "training_runs"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Identity
+    session_id = db.Column(db.String(64), nullable=True)
+    model_name = db.Column(db.String(255), nullable=False)  # stem (filename-safe)
+    well_name = db.Column(db.String(255), nullable=True)
+    algorithm = db.Column(db.String(64), nullable=True)
+
+    # Training config
+    feature_columns = db.Column(JSON, nullable=True)  # ordered list of feature cols used at training
+    target_oil = db.Column(db.String(255), nullable=True)
+    target_water = db.Column(db.String(255), nullable=True)
+    cv_folds = db.Column(db.Integer, nullable=True)
+
+    # Metrics (test + CV R2)
+    test_r2_oil = db.Column(db.Float, nullable=True)
+    test_r2_water = db.Column(db.Float, nullable=True)
+    test_rmse_oil = db.Column(db.Float, nullable=True)
+    test_rmse_water = db.Column(db.Float, nullable=True)
+    cv_r2_mean_oil = db.Column(db.Float, nullable=True)
+    cv_r2_std_oil = db.Column(db.Float, nullable=True)
+    cv_r2_mean_water = db.Column(db.Float, nullable=True)
+    cv_r2_std_water = db.Column(db.Float, nullable=True)
+
+    # Artifacts
+    oil_path = db.Column(db.String(512), nullable=True)
+    water_path = db.Column(db.String(512), nullable=True)
+    meta_path = db.Column(db.String(512), nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "session_id": self.session_id,
+            "model_name": self.model_name,
+            "well_name": self.well_name,
+            "algorithm": self.algorithm,
+            "feature_columns": self.feature_columns,
+            "target_oil": self.target_oil,
+            "target_water": self.target_water,
+            "cv_folds": self.cv_folds,
+            "test_r2_oil": self.test_r2_oil,
+            "test_r2_water": self.test_r2_water,
+            "test_rmse_oil": self.test_rmse_oil,
+            "test_rmse_water": self.test_rmse_water,
+            "cv_r2_mean_oil": self.cv_r2_mean_oil,
+            "cv_r2_std_oil": self.cv_r2_std_oil,
+            "cv_r2_mean_water": self.cv_r2_mean_water,
+            "cv_r2_std_water": self.cv_r2_std_water,
+            "oil_path": self.oil_path,
+            "water_path": self.water_path,
+            "meta_path": self.meta_path,
+            "created_at": self.created_at.isoformat(),
+        }

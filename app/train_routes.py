@@ -9,7 +9,9 @@ import pandas as pd
 from flask import Blueprint, current_app, jsonify, render_template, request
 from werkzeug.utils import secure_filename
 
+from app import db
 from app.config import CHOKE_MAX, CHOKE_MIN, FEATURE_NAMES
+from app.models import TrainingRun
 from app.utils import clear_model_cache
 from app.train_ml import (
     ALGORITHMS,
@@ -485,6 +487,37 @@ def api_train_save_models():
             ensure_ascii=False,
             indent=2,
         )
+
+    # Persist training history to DB (auto-created via db.create_all()).
+    try:
+        cv_o = getattr(state, "cv_r2_oil", None) or {}
+        cv_w = getattr(state, "cv_r2_water", None) or {}
+        tr = TrainingRun(
+            session_id=sid,
+            model_name=stem,
+            well_name=state.well_name,
+            algorithm=state.algorithm,
+            feature_columns=list(state.feature_cols or []),
+            target_oil=state.target_oil,
+            target_water=state.target_water,
+            cv_folds=getattr(state, "cv_folds", None),
+            test_r2_oil=getattr(state, "test_r2_oil", None),
+            test_r2_water=getattr(state, "test_r2_water", None),
+            test_rmse_oil=getattr(state, "test_rmse_oil", None),
+            test_rmse_water=getattr(state, "test_rmse_water", None),
+            cv_r2_mean_oil=cv_o.get("mean"),
+            cv_r2_std_oil=cv_o.get("std"),
+            cv_r2_mean_water=cv_w.get("mean"),
+            cv_r2_std_water=cv_w.get("std"),
+            oil_path=str(oil_path.relative_to(root)),
+            water_path=str(water_path.relative_to(root)),
+            meta_path=str(meta_path.relative_to(root)),
+        )
+        db.session.add(tr)
+        db.session.commit()
+    except Exception:
+        # Don't block saving artifacts if DB insert fails.
+        db.session.rollback()
 
     clear_model_cache(stem)
 

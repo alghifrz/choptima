@@ -19,6 +19,9 @@ def _project_root() -> str:
 
 _MODEL_PAIR_CACHE: dict[str, tuple] = {}
 
+# Forecast bundle cache
+_FORECAST_BUNDLE = None
+
 
 def clear_model_cache(stem: str | None = None) -> None:
     """Drop cached joblib models (e.g. after overwriting files on disk)."""
@@ -27,6 +30,199 @@ def clear_model_cache(stem: str | None = None) -> None:
         _MODEL_PAIR_CACHE.pop(stem, None)
     else:
         _MODEL_PAIR_CACHE.clear()
+
+    # Also clear forecast bundle cache on any model update
+    global _FORECAST_BUNDLE
+    _FORECAST_BUNDLE = None
+
+
+def load_forecast_bundle():
+    """Load ml_models/forecast_bundle.pkl once (cached)."""
+    global _FORECAST_BUNDLE
+    if _FORECAST_BUNDLE is not None:
+        return _FORECAST_BUNDLE
+    p = os.path.join(_project_root(), "ml_models", "forecast_bundle.pkl")
+    if not os.path.isfile(p):
+        raise FileNotFoundError("forecast_bundle.pkl tidak ditemukan di folder ml_models")
+    _FORECAST_BUNDLE = joblib.load(p)
+    return _FORECAST_BUNDLE
+
+
+def _bucket_to_choke_value(bucket: str, bucket_name: list, bins: list) -> float | None:
+    """Map bucket name to representative choke (0-1)."""
+    try:
+        i = list(bucket_name).index(bucket)
+    except Exception:
+        return None
+    if not isinstance(bins, (list, tuple)) or len(bins) < i + 2:
+        return None
+    lo = float(bins[i])
+    hi = float(bins[i + 1])
+    v = (lo + hi) / 2.0
+    return float(np.clip(v, 0.0, 1.0))
+
+
+def _build_time_features_for_date(d: pd.Timestamp) -> dict[str, float]:
+    d = pd.Timestamp(d)
+    return {
+        "year": float(d.year),
+        "month": float(d.month),
+        "day": float(d.day),
+        "dayofweek": float(d.dayofweek),
+        "dayofyear": float(d.dayofyear),
+    }
+
+
+def _history_series_for_forecast(prediction_date: str, fallback_oil: float, fallback_water: float) -> tuple[list[float], list[float]]:
+    """
+    Use DB history from predictions table (time-based) to fill lags/rolling.
+    Falls back to current optimized values if history missing.
+    """
+    try:
+        from app.models import Prediction
+    except Exception:
+        return [float(fallback_oil)] * 7, [float(fallback_water)] * 7
+
+    dt = pd.to_datetime(prediction_date, errors="coerce")
+    if pd.isna(dt):
+        dt = pd.Timestamp.today()
+    dt_date = pd.Timestamp(dt).date()
+
+    try:
+        q = (
+            Prediction.query.filter(Prediction.prediction_date <= dt_date)
+            .order_by(Prediction.prediction_date.desc(), Prediction.created_at.desc())
+            .limit(14)
+        )
+        rows = q.all()
+    except Exception:
+        rows = []
+
+    oil_hist: list[float] = []
+    water_hist: list[float] = []
+    for r in rows:
+        try:
+            oil_hist.append(float(r.predicted_oil))
+            water_hist.append(float(r.predicted_water))
+        except Exception:
+            pass
+
+    if not oil_hist:
+        oil_hist = [float(fallback_oil)]
+    if not water_hist:
+        water_hist = [float(fallback_water)]
+
+    # Ensure at least 7 values (pad with latest)
+    while len(oil_hist) < 7:
+        oil_hist.append(oil_hist[-1])
+    while len(water_hist) < 7:
+        water_hist.append(water_hist[-1])
+
+    return oil_hist, water_hist
+
+
+def forecast_tomorrow(
+    prediction_date: str,
+    oil_today: float,
+    water_today: float,
+    input_features: dict,
+) -> dict:
+    """
+    Forecast for next day using forecast_bundle.pkl.
+    Builds lag/rolling features from DB history (`predictions`) when available.
+    """
+    b = load_forecast_bundle()
+    model_reg = b["model_reg"]
+    clf_choke = b["clf_choke"]
+    le = b.get("label_encoder")
+
+    # Prefer feature order embedded in estimators (reliable)
+    feature_cols: list[str] | None = None
+    try:
+        est0 = getattr(model_reg, "estimators_", [None])[0]
+        fn = getattr(est0, "feature_names_in_", None)
+        if fn is not None:
+            feature_cols = [str(x) for x in list(fn)]
+    except Exception:
+        feature_cols = None
+    if not feature_cols:
+        try:
+            fn = getattr(clf_choke, "feature_names_in_", None)
+            if fn is not None:
+                feature_cols = [str(x) for x in list(fn)]
+        except Exception:
+            feature_cols = None
+    if not feature_cols:
+        feature_cols = [str(x) for x in list(b["feature_cols"])]
+
+    var = list(b["var"])
+    bucket_name = list(b.get("bucket_name") or [])
+    bins = list(b.get("bins") or [])
+
+    dt = pd.to_datetime(prediction_date, errors="coerce")
+    if pd.isna(dt):
+        dt = pd.Timestamp.today()
+    tomorrow = pd.Timestamp(dt).normalize() + pd.Timedelta(days=1)
+
+    oil_hist, water_hist = _history_series_for_forecast(prediction_date, oil_today, water_today)
+    # rows are newest-first: [t, t-1, t-2, ...]
+    o1, o2, o3 = oil_hist[0], oil_hist[1], oil_hist[2]
+    w1, w2, w3 = water_hist[0], water_hist[1], water_hist[2]
+    oil_roll3 = float(np.mean([o1, o2, o3]))
+    water_roll3 = float(np.mean([w1, w2, w3]))
+
+    feats: dict[str, float] = {}
+    feats.update(_build_time_features_for_date(tomorrow))
+    feats.update(
+        {
+            "oil_lag_1": float(o1),
+            "oil_lag_2": float(o2),
+            "oil_lag_3": float(o3),
+            "water_lag_1": float(w1),
+            "water_lag_2": float(w2),
+            "water_lag_3": float(w3),
+            "oil_roll_mean_3": float(oil_roll3),
+            "water_roll_mean_3": float(water_roll3),
+        }
+    )
+
+    for k in var:
+        if k not in input_features:
+            raise ValueError(f"Kolom input '{k}' wajib untuk forecast.")
+        feats[k] = float(input_features[k])
+
+    X = np.array([[feats[c] for c in feature_cols]], dtype=np.float64)
+    reg = model_reg.predict(X)
+    oil_next = float(reg[0][0])
+    water_next = float(reg[0][1])
+
+    cls = clf_choke.predict(X)
+    cls0 = cls[0]
+    if le is not None and hasattr(le, "inverse_transform"):
+        bucket = str(le.inverse_transform([cls0])[0])
+    else:
+        bucket = str(cls0)
+
+    choke_val = _bucket_to_choke_value(bucket, bucket_name, bins)
+    return {
+        "date": tomorrow.date().isoformat(),
+        "oil": max(0.0, oil_next),
+        "water": max(0.0, water_next),
+        "choke_bucket": bucket,
+        "choke_value": choke_val,
+        "choke_percent": (float(choke_val) * 100.0) if choke_val is not None and choke_val <= 1.25 else choke_val,
+        "history_used_days": int(min(len(oil_hist), len(water_hist), 7)),
+    }
+
+
+def forecast_tomorrow_from_optimization(
+    prediction_date: str,
+    oil_opt: float,
+    water_opt: float,
+    input_features: dict,
+) -> dict:
+    """Backward-compatible wrapper (now uses DB history when possible)."""
+    return forecast_tomorrow(prediction_date, oil_opt, water_opt, input_features)
 
 
 def training_meta_path(stem: str) -> str:
@@ -87,15 +283,17 @@ def list_model_pairs() -> list[dict[str, str]]:
 
     stems: set[str] = set()
     prefix_oil = "model_oil_"
+    prefix_water = "model_water_"
     suffix = ".pkl"
     try:
         for name in os.listdir(ml_dir):
+            # Only include filenames that start with "model_*"
             if not name.startswith(prefix_oil) or not name.endswith(suffix):
                 continue
             stem = name[len(prefix_oil) : -len(suffix)]
             if not stem or not re.match(r"^[a-zA-Z0-9_.-]+$", stem):
                 continue
-            water_name = f"model_water_{stem}{suffix}"
+            water_name = f"{prefix_water}{stem}{suffix}"
             oil_path = os.path.join(ml_dir, name)
             water_path = os.path.join(ml_dir, water_name)
             if os.path.isfile(oil_path) and os.path.isfile(water_path):

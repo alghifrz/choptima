@@ -211,6 +211,47 @@
     </div>
 </div>
 
+<!-- Forecast Tomorrow Section -->
+<div class="card rounded-2xl mt-8">
+    <div class="mb-8">
+        <h2 class="text-xl font-semibold text-gray-800 flex items-center gap-2">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 1.25rem; height: 1.25rem;">
+                <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="#4a90e2" stroke-width="1.5"/>
+                <path d="M12 6V12L15.5 14" stroke="#4a90e2" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            Forecast for tomorrow
+        </h2>
+        <p class="text-gray-500 text-sm mt-1">Prediksi produksi besok dan rekomendasi choke berbasis model forecast.</p>
+    </div>
+
+    <div id="forecastBox" class="hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div class="stat-card">
+                <p class="stat-label">Oil (Tomorrow)</p>
+                <p class="stat-value blue" id="forecastOil">-</p>
+                <p class="stat-unit">Barel</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">Water (Tomorrow)</p>
+                <p class="stat-value blue" id="forecastWater">-</p>
+                <p class="stat-unit">Barel</p>
+            </div>
+            <div class="stat-card">
+                <p class="stat-label">Choke (Tomorrow)</p>
+                <p class="stat-value green" id="forecastChokePct">-</p>
+                <p class="stat-unit"><span id="forecastChokeMeta" class="text-gray-600"></span></p>
+            </div>
+        </div>
+        <p class="text-xs text-gray-500 mt-3">
+            Tanggal: <span id="forecastDate" class="font-medium text-gray-700">-</span>
+        </p>
+    </div>
+
+    <div id="forecastEmpty" class="text-gray-500 text-sm">
+        Jalankan optimasi dulu untuk menampilkan forecast besok.
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -392,6 +433,29 @@
                 
                 // Update charts
                 drawCharts(pred);
+
+                // Forecast tomorrow card
+                const fc = data.forecast_tomorrow;
+                const fcBox = document.getElementById('forecastBox');
+                const fcEmpty = document.getElementById('forecastEmpty');
+                if (fc && typeof fc === 'object') {
+                    fcEmpty.classList.add('hidden');
+                    fcBox.classList.remove('hidden');
+                    document.getElementById('forecastDate').textContent = fc.date || '-';
+                    document.getElementById('forecastOil').textContent =
+                        fc.oil != null ? Number(fc.oil).toFixed(2) : '-';
+                    document.getElementById('forecastWater').textContent =
+                        fc.water != null ? Number(fc.water).toFixed(2) : '-';
+                    document.getElementById('forecastChokePct').textContent =
+                        fc.choke_percent != null ? Number(fc.choke_percent).toFixed(1) + '%' : '-';
+                    const meta = [];
+                    if (fc.choke_bucket) meta.push('bucket: ' + fc.choke_bucket);
+                    if (fc.choke_value != null) meta.push('fraksi: ' + Number(fc.choke_value).toFixed(3));
+                    document.getElementById('forecastChokeMeta').textContent = meta.join(' · ');
+                } else {
+                    fcBox.classList.add('hidden');
+                    fcEmpty.classList.remove('hidden');
+                }
             }
         } catch (error) {
             errorBox.classList.remove('hidden');
