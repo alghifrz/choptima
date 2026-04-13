@@ -1,5 +1,5 @@
 /**
- * Train pipeline — API + Chart.js (Oiloz palette)
+ * Train pipeline — API + Chart.js (Choptima palette)
  */
 (function () {
     'use strict';
